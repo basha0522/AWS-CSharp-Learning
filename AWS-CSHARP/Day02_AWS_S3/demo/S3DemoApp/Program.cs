@@ -37,6 +37,14 @@ namespace AwsS3Demo
             string downloadFilePath = "downloaded_test_upload.txt";
             await DownloadFileAsync(s3Client, bucketName, "test_upload.txt", downloadFilePath);
 
+            // 4️⃣ Delete a file
+            await DeleteFileAsync(s3Client, bucketName, "test_upload.txt");
+
+            // 5️⃣ Multipart upload (for large files)
+            string bigFilePath = "big_file_test.txt";
+            File.WriteAllText(bigFilePath, new string('A', 6 * 1024 * 1024)); // ~6MB
+            await MultipartUploadAsync(s3Client, bucketName, bigFilePath);
+
             Console.WriteLine("✅ All S3 operations completed.");
         }
 
@@ -77,6 +85,77 @@ namespace AwsS3Demo
             using var response = await s3Client.GetObjectAsync(request);
             await response.WriteResponseStreamToFileAsync(destinationPath, false, default);
             Console.WriteLine("✅ Download complete.");
+        }
+        static async Task DeleteFileAsync(AmazonS3Client s3Client, string bucketName, string key)
+        {
+            Console.WriteLine($"\nDeleting file: {key}");
+            var request = new DeleteObjectRequest
+            {
+                BucketName = bucketName,
+                Key = key
+            };
+            await s3Client.DeleteObjectAsync(request);
+            Console.WriteLine("✅ Delete complete.");
+        }
+
+        static async Task MultipartUploadAsync(AmazonS3Client s3Client, string bucketName, string filePath)
+        {
+            Console.WriteLine($"\nMultipart uploading file: {filePath}");
+            var keyName = Path.GetFileName(filePath);
+            var initiateRequest = new InitiateMultipartUploadRequest
+            {
+                BucketName = bucketName,
+                Key = keyName
+            };
+
+            var initResponse = await s3Client.InitiateMultipartUploadAsync(initiateRequest);
+            var uploadId = initResponse.UploadId;
+            var partETags = new List<PartETag>();
+            const int partSize = 5 * 1024 * 1024; // 5 MB
+
+            try
+            {
+                using var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+                long filePosition = 0;
+                for (int partNumber = 1; filePosition < fileStream.Length; partNumber++)
+                {
+                    var uploadRequest = new UploadPartRequest
+                    {
+                        BucketName = bucketName,
+                        Key = keyName,
+                        UploadId = uploadId,
+                        PartNumber = partNumber,
+                        PartSize = Math.Min(partSize, fileStream.Length - filePosition),
+                        InputStream = fileStream
+                    };
+
+                    var uploadResponse = await s3Client.UploadPartAsync(uploadRequest);
+                    partETags.Add(new PartETag(partNumber, uploadResponse.ETag));
+                    filePosition += partSize;
+                }
+
+                var completeRequest = new CompleteMultipartUploadRequest
+                {
+                    BucketName = bucketName,
+                    Key = keyName,
+                    UploadId = uploadId,
+                    PartETags = partETags
+                };
+
+                await s3Client.CompleteMultipartUploadAsync(completeRequest);
+                Console.WriteLine("✅ Multipart upload complete.");
+            }
+            catch
+            {
+                await s3Client.AbortMultipartUploadAsync(new AbortMultipartUploadRequest
+                {
+                    BucketName = bucketName,
+                    Key = keyName,
+                    UploadId = uploadId
+                });
+                Console.WriteLine("❌ Multipart upload aborted.");
+                throw;
+            }
         }
     }
 }
