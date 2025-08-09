@@ -16,7 +16,7 @@ class Program
         var region = Amazon.RegionEndpoint.APSouth1;
         var chain = new CredentialProfileStoreChain();
         // reading file from S3 bucket
-        /*
+        
         if (chain.TryGetAWSCredentials(awsProfileName, out var aWSCredentials))
         {
             var S3Client = new AmazonS3Client(aWSCredentials, region);
@@ -36,16 +36,16 @@ class Program
         {
             Console.WriteLine($"Profile '{awsProfileName}' not found.");
         }
-        */
+        
         // uploading and downloading from S3 bucket
-        if (!chain.TryGetAWSCredentials(awsProfileName, out var aWSCredentials))
+        if (!chain.TryGetAWSCredentials(awsProfileName, out var aWSCredentialsreturn))
         {
             Console.WriteLine($"Profile '{awsProfileName}' not found.");
             return;
         }
         else
         {
-            var S3Client = new AmazonS3Client(aWSCredentials, region);
+            var S3Client = new AmazonS3Client(aWSCredentialsreturn, region);
             // 1️⃣ List files
             await ListFilesAsync(S3Client, bucketName);
 
