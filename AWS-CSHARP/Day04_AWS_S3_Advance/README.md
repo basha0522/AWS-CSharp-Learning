@@ -210,3 +210,59 @@ List parts: aws s3api list-parts --bucket ... --key ... --upload-id ...
 Abort to free parts: aws s3api abort-multipart-upload ...
 
 There can be costs for storing uploaded parts that aren’t completed — use lifecycle to abort old multipart uploads automatically.
+2) Pre-signed URLs (temporary access)
+What: Pre-signed URLs allow temporary access to an object without giving credentials. Useful for giving clients secure PUT or GET access.
+
+C# — create a pre-signed GET:
+
+csharp
+Copy
+Edit
+using Amazon.S3;
+using Amazon.S3.Model;
+using Amazon.Runtime.CredentialManagement;
+
+var chain = new CredentialProfileStoreChain();
+chain.TryGetAWSCredentials("aws-csharp", out var creds);
+using var s3 = new AmazonS3Client(creds, Amazon.RegionEndpoint.APSouth1);
+
+var request = new GetPreSignedUrlRequest
+{
+    BucketName = "your-bucket-name",
+    Key = "file.txt",
+    Expires = DateTime.UtcNow.AddMinutes(15), // TTL
+    Verb = HttpVerb.GET
+};
+
+string url = s3.GetPreSignedURL(request);
+Console.WriteLine("Pre-signed GET URL: " + url);
+Pre-signed PUT (allow upload by client):
+
+csharp
+Copy
+Edit
+var putRequest = new GetPreSignedUrlRequest
+{
+    BucketName = "your-bucket-name",
+    Key = "upload/remote.txt",
+    Expires = DateTime.UtcNow.AddMinutes(10),
+    Verb = HttpVerb.PUT
+};
+string putUrl = s3.GetPreSignedURL(putRequest);
+Test from terminal:
+
+bash
+Copy
+Edit
+# Download with GET
+curl "<pre-signed-get-url>" -o downloaded.txt
+
+# Upload with PUT
+curl -X PUT --upload-file localfile.txt "<pre-signed-put-url>"
+Security notes:
+
+Keep TTL short.
+
+If object is private, pre-signed URL temporarily grants access.
+
+If bucket has Block Public Access or policies, ensure pre-signed URL operations are allowed

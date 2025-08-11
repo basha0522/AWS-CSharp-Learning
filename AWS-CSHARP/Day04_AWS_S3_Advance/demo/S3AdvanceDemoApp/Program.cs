@@ -13,12 +13,18 @@ namespace S3AdvanceDemoApp
         {
             // easiest way 
             //  — TransferUtility (recommended)This is the recommended simple approach — the SDK handles splitting, parallelism, retries
-            //await AWSUploadMultipartSelfList();
+            await AWSUploadMultipartSelfList();
 
             //manual multipart (deep control)
             //If you want to control each part (e.g., upload parts from different machines or have special chunking), 
             // use the Initiate/UploadPart/Complete flow
             await AWSManualUploadMultiPart();
+
+            //2. Presigned URL Get
+            await GetPresignedURLImplementation();
+
+            //2.1 Presigned URL Put
+            await PutPresignedURLImplementation();
         }
         static async Task AWSUploadMultipartSelfList()
         {
@@ -86,6 +92,36 @@ namespace S3AdvanceDemoApp
             {
                 Console.WriteLine($"Error.. {ex.Message}");
             }
+        }
+        static async Task GetPresignedURLImplementation()
+        {
+            var chain = new CredentialProfileStoreChain();
+            chain.TryGetAWSCredentials("aws-csharp", out var awscred);
+            using var s3 = new AmazonS3Client(awscred, Amazon.RegionEndpoint.APSouth1);
+            var objGetPresignedURL = new GetPreSignedUrlRequest
+            {
+                BucketName = "abdul-aws-s3-demo-20250809",
+                Key = "big_file_test.txt",
+                Expires = DateTime.UtcNow.AddMinutes(15),
+                Verb = HttpVerb.GET
+            };
+            string url = s3.GetPreSignedURL(objGetPresignedURL);
+            Console.WriteLine($"Pre-Signed Get URL Request:{url}");
+        }
+        static async Task PutPresignedURLImplementation()
+        {
+            var chain = new CredentialProfileStoreChain();
+            chain.TryGetAWSCredentials("aws-csharp", out var awscred);
+            using var s3 = new AmazonS3Client(awscred, Amazon.RegionEndpoint.APSouth1);
+            var objGetPresignedURL = new GetPreSignedUrlRequest
+            {
+                BucketName = "abdul-aws-s3-demo-20250809",
+                Key = "upload/remote.txt",
+                Expires = DateTime.UtcNow.AddMinutes(15),
+                Verb = HttpVerb.PUT
+            };
+            string url = s3.GetPreSignedURL(objGetPresignedURL);
+            Console.WriteLine($"Pre-Signed Get URL Request:{url}");
         }
     }    
 }
