@@ -266,3 +266,199 @@ Keep TTL short.
 If object is private, pre-signed URL temporarily grants access.
 
 If bucket has Block Public Access or policies, ensure pre-signed URL operations are allowed
+
+3) Versioning
+What: Keep multiple versions of an object. Each PUT creates a new version (unless same version id). Useful to recover deleted/overwritten objects.
+
+Enable versioning (CLI):
+
+bash
+Copy
+Edit
+aws s3api put-bucket-versioning \
+  --bucket your-bucket-name \
+  --versioning-configuration Status=Enabled \
+  --profile aws-csharp
+Check status:
+
+bash
+Copy
+Edit
+aws s3api get-bucket-versioning --bucket your-bucket-name --profile aws-csharp
+List versions (CLI):
+
+bash
+Copy
+Edit
+aws s3api list-object-versions --bucket your-bucket-name --profile aws-csharp
+C# enable versioning:
+
+csharp
+Copy
+Edit
+using Amazon.S3.Model;
+
+var req = new PutBucketVersioningRequest
+{
+    BucketName = "your-bucket-name",
+    VersioningConfig = new S3BucketVersioningConfig { Status = VersionStatus.Enabled }
+};
+await s3Client.PutBucketVersioningAsync(req);
+Restore older version: download by --version-id or use SDK GetObjectRequest with VersionId.
+
+Note: Deleting an object with versioning enabled creates a delete marker; older versions still exist.
+
+4) Lifecycle policies
+Use lifecycle rules to transition objects to cheaper storage (Standard-IA, Glacier, Deep Archive) or expire/delete them, or to abort incomplete multipart uploads.
+
+Example lifecycle JSON (transition to STANDARD_IA after 30d, expire after 365d):
+lifecycle.json
+
+json
+Copy
+Edit
+{
+  "Rules": [
+    {
+      "ID": "MoveToIAAndExpire",
+      "Filter": { "Prefix": "" },
+      "Status": "Enabled",
+      "Transitions": [
+        {
+          "Days": 30,
+          "StorageClass": "STANDARD_IA"
+        }
+      ],
+      "Expiration": {
+        "Days": 365
+      }
+    },
+    {
+      "ID": "AbortMultipartUploads",
+      "Filter": { "Prefix": "" },
+      "Status": "Enabled",
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    }
+  ]
+}
+Apply with CLI:
+
+bash
+Copy
+Edit
+aws s3api put-bucket-lifecycle-configuration --bucket your-bucket-name --lifecycle-configuration file://lifecycle.json --profile aws-csharp
+Notes:
+
+Choose storage class carefully: retrieval fees and latency differ (GLACIER vs GLACIER_INSTANT_RETRIEVAL etc.).
+
+Lifecycle rules are powerful for cost control.
+
+5) Server-side encryption (SSE)
+Three options:
+
+SSE-S3 (Amazon S3 managed keys) — easiest: AWS manages encryption keys.
+
+SSE-KMS (AWS KMS keys) — you control KMS key (recommended for sensitive data and audit).
+
+SSE-C (customer-provided keys) — not common for typical apps.
+
+Enable default encryption on bucket (CLI) — SSE-S3 example:
+encryption-s3.json
+
+json
+Copy
+Edit
+{
+  "Rules": [
+    {
+      "ApplyServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+      }
+    }
+  ]
+}
+bash
+Copy
+Edit
+aws s3api put-bucket-encryption \
+  --bucket your-bucket-name \
+  --server-side-encryption-configuration file://encryption-s3.json \
+  --profile aws-csharp
+SSE-KMS (default to KMS key):
+json
+Copy
+Edit
+{
+  "Rules": [
+    {
+      "ApplyServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "aws:kms",
+        "KMSMasterKeyID": "arn:aws:kms:region:account-id:key/key-id"
+      }
+    }
+  ]
+}
+C# per-object encryption with SSE-S3:
+
+csharp
+Copy
+Edit
+var putReq = new PutObjectRequest
+{
+    BucketName = bucketName,
+    Key = "file.txt",
+    FilePath = "localfile.txt",
+    ServerSideEncryptionMethod = ServerSideEncryptionMethod.AES256 // SSE-S3
+};
+await s3.PutObjectAsync(putReq);
+C# per-object SSE-KMS:
+
+csharp
+Copy
+Edit
+var putReq = new PutObjectRequest
+{
+    BucketName = bucketName,
+    Key = "file.txt",
+    FilePath = "localfile.txt",
+    ServerSideEncryptionMethod = ServerSideEncryptionMethod.AWSKMS,
+    ServerSideEncryptionKeyManagementServiceKeyId = "arn:aws:kms:..."
+};
+await s3.PutObjectAsync(putReq);
+Permissions for KMS: ensure IAM role/user has kms:Encrypt, kms:Decrypt, kms:GenerateDataKey*, and that the KMS key policy allows the principal and S3 to use it.
+
+6) IAM permissions needed (minimum)
+For these features you’ll need S3 actions (example list):
+
+s3:PutObject, s3:GetObject, s3:DeleteObject
+
+s3:ListBucket, s3:ListBucketMultipartUploads
+
+s3:CreateMultipartUpload, s3:UploadPart, s3:CompleteMultipartUpload, s3:AbortMultipartUpload
+
+s3:PutObjectAcl (if setting ACL)
+
+s3:PutBucketVersioning, s3:GetBucketVersioning
+
+s3:PutBucketLifecycle, s3:GetBucketLifecycle
+
+s3:PutEncryptionConfiguration or s3:PutBucketEncryption (depends)
+
+For SSE-KMS: kms:Encrypt, kms:Decrypt, kms:GenerateDataKey, kms:DescribeKey as applicable
+
+Tip: Use least privilege and test with a dedicated developer IAM user or role.
+
+7) Tests & verification (quick checklist)
+aws sts get-caller-identity --profile aws-csharp (confirm identity)
+
+Create a test bucket (or use existing)
+
+Multipart: run aws s3 cp bigfile.zip ... and aws s3api list-multipart-uploads to watch progress
+
+Pre-signed URL: generate, use curl to GET/PUT
+
+Versioning: enable, upload same object multiple times, aws s3api list-object-versions
+
+Lifecycle: apply JSON, check in console or wait for transition (can simulate with TestStorageClass API? Usually wait)
+
+SSE: upload with ServerSideEncryptionMethod, then check object metadata in console — it shows “SSE-S3” or “SSE-KMS”

@@ -13,18 +13,21 @@ namespace S3AdvanceDemoApp
         {
             // easiest way 
             //  — TransferUtility (recommended)This is the recommended simple approach — the SDK handles splitting, parallelism, retries
-            await AWSUploadMultipartSelfList();
+            // await AWSUploadMultipartSelfList();
 
             //manual multipart (deep control)
             //If you want to control each part (e.g., upload parts from different machines or have special chunking), 
             // use the Initiate/UploadPart/Complete flow
-            await AWSManualUploadMultiPart();
+            // await AWSManualUploadMultiPart();
 
             //2. Presigned URL Get
-            await GetPresignedURLImplementation();
+            // await GetPresignedURLImplementation();
 
             //2.1 Presigned URL Put
-            await PutPresignedURLImplementation();
+            // await PutPresignedURLImplementation();
+
+            //Apply versioning
+            await PutApplyVersioning();
         }
         static async Task AWSUploadMultipartSelfList()
         {
@@ -122,6 +125,20 @@ namespace S3AdvanceDemoApp
             };
             string url = s3.GetPreSignedURL(objGetPresignedURL);
             Console.WriteLine($"Pre-Signed Get URL Request:{url}");
+        }
+
+        static async Task PutApplyVersioning()
+        {
+            var chain = new CredentialProfileStoreChain();
+            chain.TryGetAWSCredentials("aws-csharp", out var awscred);
+            using var s3 = new AmazonS3Client(awscred, Amazon.RegionEndpoint.APSouth1);
+            var req = new PutBucketVersioningRequest
+            {
+                BucketName = "abdul-aws-s3-demo-20250809",
+                VersioningConfig = new S3BucketVersioningConfig { Status = VersionStatus.Enabled }
+            };
+            await s3.PutBucketVersioningAsync(req);
+            Console.WriteLine($"Versioning.. Done:{req}");
         }
     }    
 }
